@@ -31,6 +31,10 @@ coverage/
 # Logs
 *.log
 
+# Database
+*.sqlite3
+*.db
+
 # Local storage / uploads
 storage/
 uploads/

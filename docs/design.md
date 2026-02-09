@@ -1,191 +1,169 @@
-# Care Plan Generation System – Design Document
+# Care Plan Generator — Design Document
 
-## 1. Background & Goals
+## 1. Overview
 
-### 1.1 Business Context
-This system is designed for **CVS medical staff** (pharmacists and medical assistants).  
-Patients do **not** directly interact with the system.
+### 1.1 Background
+A specialty pharmacy (CVS) needs to automatically generate care plans based on patient clinical records. Currently, pharmacists spend 20–40 minutes per patient manually creating these care plans. The pharmacy is short-staffed and backlogged, while care plans are required for Medicare reimbursement and pharma compliance.
 
-Medical staff need to generate a **Care Plan** when prescribing a medication.  
-The generated Care Plan will be **printed and handed to the patient**, and is also required for:
-- Compliance
-- Reimbursement by Medicare and pharmaceutical partners (pharma)
+### 1.2 Users
+- **CVS medical staff** (pharmacists, medical assistants) — the sole users of this system
+- Patients do **not** interact with the system; care plans are printed and handed to them
 
-### 1.2 Problem Statement
-Currently, pharmacists spend **20–40 minutes per patient** manually reviewing patient records and drafting Care Plans.  
-Due to staffing shortages, this task is backlogged and creates operational risk.
-
-### 1.3 Objective
-Build a **production-ready system** that:
-- Automatically generates Care Plans from structured clinical input
-- Prevents accidental duplicate submissions
-- Enforces data integrity rules
-- Integrates safely with LLMs
-- Supports reporting needs for pharma partners
+### 1.3 Core Value Proposition
+Reduce care plan creation time from 20–40 min to < 5 min by using an LLM to generate structured care plans from patient data entered via a validated web form.
 
 ---
 
-## 2. Users & Personas
+## 2. Functional Requirements
 
-### 2.1 Primary Users
-- CVS pharmacists
-- CVS medical assistants
+### 2.1 Data Input (Web Form)
+The system must accept the following inputs with validation:
 
-### 2.2 Non-Users
-- Patients do **not** interact with the system directly
+| Field | Type | Validation |
+|---|---|---|
+| Patient First Name | string | Required, non-empty |
+| Patient Last Name | string | Required, non-empty |
+| Referring Provider | string | Required, non-empty |
+| Referring Provider NPI | 10-digit number | Required, exactly 10 digits |
+| Patient MRN | 6-digit number | Required, unique, exactly 6 digits |
+| Primary Diagnosis | ICD-10 code | Required, format validation |
+| Medication Name | string | Required, non-empty |
+| Additional Diagnoses | list of ICD-10 codes | Optional |
+| Medication History | list of strings | Optional |
+| Patient Records | string or PDF | Required, free-text or file upload |
 
----
+### 2.2 Care Plan Generation
+- One care plan corresponds to **one order** (one medication)
+- LLM generates a structured care plan containing:
+  - **Problem list** / Drug therapy problems (DTPs)
+  - **Goals** (SMART format)
+  - **Pharmacist interventions / plan**
+  - **Monitoring plan & lab schedule**
+- Output is downloadable as a text file
 
-## 3. Core Domain Concepts
+### 2.3 Duplicate Detection Rules
 
-### 3.1 Care Plan
-- **One Care Plan corresponds to exactly one order**
-- **One order corresponds to one medication**
-- A patient may have multiple Care Plans (for different medications or dates)
+| Scenario | Action | Reason |
+|---|---|---|
+| Same patient + same medication + same day | ❌ ERROR — block submission | Definite duplicate |
+| Same patient + same medication + different day | ⚠️ WARNING — allow with confirmation | Could be a refill |
+| Same MRN + name or DOB mismatch | ⚠️ WARNING — allow with confirmation | Possible data entry error |
+| Same name + DOB + different MRN | ⚠️ WARNING — allow with confirmation | Possibly the same person |
+| Same NPI + different provider name | ❌ ERROR — must correct | NPI is a unique identifier |
 
-### 3.2 Required Care Plan Sections
-Every generated Care Plan **must include**:
-- Problem List
-- Goals
-- Pharmacist Interventions
-- Monitoring Plan
+### 2.4 Provider Management
+- Providers are identified uniquely by NPI
+- A provider only needs to be entered once in the system
+- Subsequent orders can reference an existing provider by NPI
 
----
+### 2.5 Export & Reporting
+- Care plan download as text file (for printing / uploading to their system)
+- Export functionality for pharma reporting (e.g., CSV with order summaries)
 
-## 4. Functional Requirements
+### 2.6 Feature Priority
 
-| Feature | Required | Notes |
-|------|------|------|
-| Patient & Order Duplicate Detection | Yes | Must not disrupt existing workflows |
-| Care Plan Generation (LLM) | Yes | Core system value |
-| Provider Duplicate Detection | Yes | Impacts pharma reporting accuracy |
-| Care Plan Download | Yes | Used for printing and external systems |
-| Report Export (CSV) | Yes | Required by pharma partners |
-
----
-
-## 5. Input Data Requirements
-
-### 5.1 Patient Information
-- First Name (string)
-- Last Name (string)
-- MRN (unique identifier, numeric string, may contain leading zeros)
-- DOB
-- Sex
-- Weight
-- Allergies
-
-### 5.2 Provider Information
-- Provider Name (string)
-- **NPI (10-digit numeric identifier, canonical unique key)**
-
-### 5.3 Clinical Information
-- Primary Diagnosis (ICD-10)
-- Additional Diagnoses (list of ICD-10 codes)
-- Medication Name (the medication for this order)
-- Medication History (list of strings)
-- Patient Records (free-text or uploaded PDF)
+| Feature | Priority | Notes |
+|---|---|---|
+| Patient / order duplicate detection | ✅ Must-have | Cannot disrupt existing workflow |
+| Care Plan generation (LLM) | ✅ Must-have | Core value |
+| Provider duplicate detection | ✅ Must-have | Affects pharma reporting accuracy |
+| Export for reporting | ✅ Must-have | Required for pharma reporting |
+| Care Plan download | ✅ Must-have | Users need to upload to their system |
 
 ---
 
-## 6. Data Integrity & Validation Rules
+## 3. Data Model
 
-### 6.1 Hard Validation Errors (Block Submission)
-- Invalid NPI format (must be 10 digits)
-- Missing required fields
-- Malformed ICD-10 codes
-- Provider NPI conflicts that require correction
+### 3.1 Core Entities
 
-### 6.2 Soft Validation (Warnings)
-- Potential duplicate patients
-- Potential duplicate orders
-- Provider name mismatch for an existing NPI
-- MRN/name/DOB inconsistencies
+**Provider**
+- `id` (PK)
+- `name` (string)
+- `npi` (string, unique, 10 digits)
 
-Warnings require **explicit user confirmation** to proceed.
+**Patient**
+- `id` (PK)
+- `first_name` (string)
+- `last_name` (string)
+- `mrn` (string, unique, 6 digits)
+- `date_of_birth` (date, optional)
+- `primary_diagnosis` (string, ICD-10)
+- `additional_diagnoses` (list of ICD-10 codes)
+- `medication_history` (list of strings)
+- `patient_records` (text)
 
----
+**Order**
+- `id` (PK)
+- `patient_id` (FK → Patient)
+- `provider_id` (FK → Provider)
+- `medication_name` (string)
+- `created_at` (datetime)
 
-## 7. Duplicate Detection Rules
+**CarePlan**
+- `id` (PK)
+- `order_id` (FK → Order, one-to-one)
+- `content` (text — LLM-generated output)
+- `created_at` (datetime)
 
-### 7.1 Order-Level Duplicate Detection
-
-| Scenario | Handling | Rationale |
-|------|------|------|
-| Same patient + same medication + same day | ❌ ERROR (Block) | Definitive duplicate submission |
-| Same patient + same medication + different day | ⚠️ WARNING (Confirm to proceed) | Likely continuation of therapy |
-
-### 7.2 Patient-Level Duplicate Detection
-
-| Scenario | Handling | Rationale |
-|------|------|------|
-| Same MRN + different name or DOB | ⚠️ WARNING | Possible data entry error |
-| Same name + DOB + different MRN | ⚠️ WARNING | Possible same patient with inconsistent MRN |
-
-Patient duplicates **do not automatically merge records**.  
-They surface warnings and rely on user confirmation.
-
-### 7.3 Provider-Level Duplicate Detection
-
-| Scenario | Handling | Rationale |
-|------|------|------|
-| Same NPI + different provider name | ❌ ERROR (Must correct) | NPI is the canonical identifier |
-
-- Provider entities are uniquely identified by **NPI**
-- Names are treated as attributes, not identifiers
-- The system must never create multiple providers for the same NPI
+### 3.2 Entity Relationships
+```
+Provider 1 ──── * Order
+Patient  1 ──── * Order
+Order    1 ──── 1 CarePlan
+```
 
 ---
 
-## 8. LLM-Based Care Plan Generation
+## 4. Technical Architecture
 
-### 8.1 Role of the LLM
-The LLM is used for **clinical documentation synthesis**, not diagnosis or prescribing.
+### 4.1 Tech Stack (Proposed)
+- **Frontend**: React (web form + validation UI)
+- **Backend**: Python (FastAPI)
+- **Database**: PostgreSQL
+- **LLM**: Anthropic Claude API (or OpenAI — TBD)
+- **Export**: CSV generation for pharma reporting
 
-- Inputs are structured clinical facts
-- Output is a drafted Care Plan document
-- Final responsibility remains with the pharmacist
+### 4.2 High-Level Architecture
+```
+[Browser - React App]
+        │
+        ▼
+[FastAPI Backend]
+   ├── Validation & Duplicate Detection
+   ├── CRUD (Patient, Provider, Order)
+   ├── LLM Service (Care Plan Generation)
+   └── Export Service (CSV)
+        │
+        ▼
+  [PostgreSQL DB]
+```
 
-### 8.2 Reliability Requirements
-- LLM calls are handled asynchronously
-- Timeouts and retries are enforced
-- Failures result in a recoverable state (e.g. `needs_review`)
-- Fallback templates may be used if generation fails
-
----
-
-## 9. Output & File Handling
-
-- Care Plans are generated as downloadable files (initially text/markdown; PDF/DOCX optional)
-- Files must be printable and uploadable into external systems
-- Each Care Plan is versioned and linked to its originating order
-
----
-
-## 10. Reporting & Export
-
-- Users can export structured data for pharma reporting
-- Export format: CSV
-- Typical fields include:
-  - Provider NPI
-  - Medication
-  - Primary Diagnosis
-  - Care Plan generation date
-  - Status
+### 4.3 API Endpoints (Draft)
+- `POST /api/providers` — Create or lookup provider
+- `GET /api/providers?npi=` — Search provider by NPI
+- `POST /api/patients` — Create or lookup patient
+- `POST /api/orders` — Create order (with duplicate checks)
+- `POST /api/orders/{id}/generate-care-plan` — Trigger LLM generation
+- `GET /api/orders/{id}/care-plan/download` — Download care plan as text
+- `GET /api/export/orders` — Export orders for pharma reporting (CSV)
 
 ---
 
-## 11. Non-Functional Requirements
+## 5. Production-Ready Requirements
 
-### 11.1 Safety & Clarity
-- Errors must be clear, safe, and user-facing
-- Internal errors must not leak system details or PHI
+- **Validation**: Every input field is validated on both frontend and backend
+- **Data Integrity**: Duplicate detection rules enforced at the API layer and DB constraints
+- **Error Handling**: Errors are safe, clear, and contained — no stack traces to users
+- **Modularity**: Code is organized into clear modules (routes, services, models, schemas)
+- **Testing**: Critical logic (validation, duplicate detection, LLM prompt) covered by automated tests
+- **Runnable**: Project runs end-to-end out of the box with a single command
 
-### 11.2 Modularity
-- Validation, duplicate detection, LLM generation, rendering, and export must be modular
+---
 
-### 11.3 Testability
-- Critical logic (validation, duplicate detection, state transitions) must be covered by automated tests
+## 6. Open Questions / Future Scope
 
-### 11.4 Out-of-the-Box Execution
-- The project must run end-to-end without manual setup steps
+- PDF upload and text extraction (V2)
+- User authentication and role-based access (V2)
+- ICD-10 code validation against an official registry
+- Care plan template customization
+- Audit logging for compliance
