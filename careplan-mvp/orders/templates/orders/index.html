@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Care Plan Generator - MVP</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, sans-serif; background: #f5f5f5; padding: 40px; }
+        .container { max-width: 700px; margin: 0 auto; }
+        h1 { margin-bottom: 8px; color: #1a1a1a; }
+        .subtitle { color: #666; margin-bottom: 30px; }
+        .card { background: white; border-radius: 12px; padding: 30px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        label { display: block; font-weight: 600; margin-bottom: 6px; margin-top: 16px; color: #333; }
+        label:first-child { margin-top: 0; }
+        input, textarea { width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; }
+        textarea { height: 80px; resize: vertical; }
+        input:focus, textarea:focus { outline: none; border-color: #4a90d9; }
+        button { margin-top: 16px; width: 100%; padding: 14px; background: #4a90d9; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer; }
+        button:hover { background: #357abd; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        .btn-green { background: #28a745; }
+        .btn-green:hover { background: #218838; }
+        .btn-gray { background: #6c757d; }
+        .btn-gray:hover { background: #5a6268; }
+        .result { margin-top: 20px; }
+        .status { padding: 8px 16px; border-radius: 20px; display: inline-block; font-weight: 600; font-size: 14px; }
+        .status-completed { background: #d4edda; color: #155724; }
+        .status-failed { background: #f8d7da; color: #721c24; }
+        .care-plan { margin-top: 16px; padding: 20px; background: #f8f9fa; border-radius: 8px; white-space: pre-wrap; line-height: 1.6; font-size: 14px; }
+        .section-title { font-size: 18px; font-weight: 600; margin-bottom: 16px; color: #1a1a1a; }
+        .search-result-item { padding: 16px; border-bottom: 1px solid #eee; cursor: pointer; }
+        .search-result-item:hover { background: #f8f9fa; }
+        .search-result-item:last-child { border-bottom: none; }
+        .search-meta { color: #666; font-size: 13px; margin-top: 4px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>💊 Care Plan Generator</h1>
+        <p class="subtitle">MVP - Enter patient info, get a care plan</p>
+
+        <!-- Search -->
+        <div class="card">
+            <div class="section-title">🔍 Search Orders</div>
+            <label>Search by patient name or MRN</label>
+            <input type="text" id="searchInput" placeholder="e.g. John or MRN-001">
+            <button class="btn-gray" onclick="searchOrders()">Search</button>
+            <div id="searchResults"></div>
+        </div>
+
+        <!-- Input Form -->
+        <div class="card">
+            <div class="section-title">New Order</div>
+
+            <div class="section-title" style="font-size:15px; margin-top:8px;">Patient Information</div>
+            <label>First Name</label>
+            <input type="text" id="patient_first_name" value="John">
+            <label>Last Name</label>
+            <input type="text" id="patient_last_name" value="Smith">
+            <label>MRN</label>
+            <input type="text" id="mrn" value="MRN-001">
+            <label>Diagnosis</label>
+            <input type="text" id="diagnosis" value="Type 2 Diabetes">
+            <label>Medical History</label>
+            <textarea id="medical_history">Hypertension, High cholesterol. On metformin 500mg twice daily for 2 years.</textarea>
+
+            <div class="section-title" style="font-size:15px; margin-top:24px;">Provider Information</div>
+            <label>Provider First Name</label>
+            <input type="text" id="provider_first_name" value="Sarah">
+            <label>Provider Last Name</label>
+            <input type="text" id="provider_last_name" value="Johnson">
+            <label>NPI</label>
+            <input type="text" id="npi" value="NPI-12345">
+
+            <div class="section-title" style="font-size:15px; margin-top:24px;">Medication</div>
+            <label>Medication</label>
+            <input type="text" id="medication" value="Ozempic 0.5mg weekly">
+
+            <button id="submitBtn" onclick="submitOrder()">Generate Care Plan</button>
+        </div>
+
+        <!-- Result -->
+        <div id="resultSection" class="card result" style="display: none;">
+            <div class="section-title">Result</div>
+            <p>Order ID: <strong id="orderId"></strong></p>
+            <p style="margin-top: 8px;">Status: <span id="statusBadge" class="status"></span></p>
+            <button id="downloadBtn" class="btn-green" style="display: none;" onclick="downloadCarePlan()">⬇ Download Care Plan</button>
+            <div id="carePlanContent" class="care-plan" style="display: none;"></div>
+        </div>
+    </div>
+
+    <script>
+        let currentOrderId = null;
+
+        async function submitOrder() {
+            const btn = document.getElementById('submitBtn');
+            btn.disabled = true;
+            btn.textContent = '⏳ Generating... (10-20 seconds)';
+
+            const data = {
+                patient_first_name: document.getElementById('patient_first_name').value,
+                patient_last_name: document.getElementById('patient_last_name').value,
+                mrn: document.getElementById('mrn').value,
+                diagnosis: document.getElementById('diagnosis').value,
+                medical_history: document.getElementById('medical_history').value,
+                provider_first_name: document.getElementById('provider_first_name').value,
+                provider_last_name: document.getElementById('provider_last_name').value,
+                npi: document.getElementById('npi').value,
+                medication: document.getElementById('medication').value,
+            };
+
+            const response = await fetch('/api/orders/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data),
+            });
+            const result = await response.json();
+
+            currentOrderId = result.order_id;
+            document.getElementById('resultSection').style.display = 'block';
+            document.getElementById('orderId').textContent = result.order_id;
+
+            const orderResponse = await fetch(`/api/orders/${result.order_id}/`);
+            const order = await orderResponse.json();
+
+            const badge = document.getElementById('statusBadge');
+            badge.textContent = order.status;
+            badge.className = `status status-${order.status}`;
+
+            if (order.status === 'completed' && order.care_plan) {
+                document.getElementById('carePlanContent').style.display = 'block';
+                document.getElementById('carePlanContent').textContent = order.care_plan;
+                document.getElementById('downloadBtn').style.display = 'block';
+            }
+
+            btn.disabled = false;
+            btn.textContent = 'Generate Care Plan';
+        }
+
+        function downloadCarePlan() {
+            if (currentOrderId) {
+                window.location.href = `/api/orders/${currentOrderId}/download/`;
+            }
+        }
+
+        async function searchOrders() {
+            const q = document.getElementById('searchInput').value;
+            const response = await fetch(`/api/orders/search/?q=${encodeURIComponent(q)}`);
+            const results = await response.json();
+
+            const container = document.getElementById('searchResults');
+
+            if (results.length === 0) {
+                container.innerHTML = '<p style="padding: 16px; color: #666;">No orders found.</p>';
+                return;
+            }
+
+            container.innerHTML = results.map(order => `
+                <div class="search-result-item" onclick="viewOrder(${order.order_id})">
+                    <strong>Order #${order.order_id}</strong> - ${order.patient}
+                    <div class="search-meta">MRN: ${order.mrn} | ${order.medication} | ${order.status}</div>
+                </div>
+            `).join('');
+        }
+
+        async function viewOrder(orderId) {
+            currentOrderId = orderId;
+            const response = await fetch(`/api/orders/${orderId}/`);
+            const order = await response.json();
+
+            document.getElementById('resultSection').style.display = 'block';
+            document.getElementById('orderId').textContent = order.order_id;
+
+            const badge = document.getElementById('statusBadge');
+            badge.textContent = order.status;
+            badge.className = `status status-${order.status}`;
+
+            if (order.status === 'completed' && order.care_plan) {
+                document.getElementById('carePlanContent').style.display = 'block';
+                document.getElementById('carePlanContent').textContent = order.care_plan;
+                document.getElementById('downloadBtn').style.display = 'block';
+            } else {
+                document.getElementById('carePlanContent').style.display = 'none';
+                document.getElementById('downloadBtn').style.display = 'none';
+            }
+        }
+    </script>
+</body>
+</html>

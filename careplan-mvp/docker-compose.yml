@@ -1,0 +1,31 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: careplan
+      POSTGRES_USER: careplan_user
+      POSTGRES_PASSWORD: careplan_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  web:
+    build: .
+    command: >
+      sh -c "python manage.py migrate &&
+             python manage.py runserver 0.0.0.0:8000"
+    volumes:
+      - .:/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+    environment:
+      DATABASE_URL: postgres://careplan_user:careplan_pass@db:5432/careplan
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+
+volumes:
+  pgdata:
