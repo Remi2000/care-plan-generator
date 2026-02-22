@@ -14,6 +14,8 @@ def index(request):
 @api_view(["POST"])
 def create_order(request):
     data = request.data
+    print("===== STEP 1: 收到前端的数据 =====")
+    print(data)
 
     patient, _ = Patient.objects.get_or_create(
         mrn=data["mrn"],
@@ -24,6 +26,8 @@ def create_order(request):
             "medical_history": data.get("medical_history", ""),
         },
     )
+    print("===== STEP 2: 患者信息 =====")
+    print(f"Patient: {patient.first_name} {patient.last_name}")
 
     provider, _ = Provider.objects.get_or_create(
         npi=data["npi"],
@@ -32,6 +36,8 @@ def create_order(request):
             "last_name": data["provider_last_name"],
         },
     )
+    print("===== STEP 3: Provider信息 =====")
+    print(f"Provider: {provider.first_name} {provider.last_name}")
 
     order = Order.objects.create(
         patient=patient,
@@ -39,9 +45,12 @@ def create_order(request):
         medication=data["medication"],
         status="pending",
     )
+    print("===== STEP 4: 订单已创建 =====")
+    print(f"Order ID: {order.id}, Status: {order.status}")
 
     order.status = "processing"
     order.save()
+    print("===== STEP 5: 开始调用 Claude API =====")
 
     try:
         client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
@@ -70,12 +79,15 @@ def create_order(request):
         order.care_plan = message.content[0].text
         order.status = "completed"
         order.save()
+        print("===== STEP 6: Care Plan 生成成功! =====")
 
     except Exception as e:
         order.status = "failed"
         order.care_plan = str(e)
         order.save()
+        print(f"===== STEP 6: 失败了! 错误: {e} =====")
 
+    print(f"===== STEP 7: 返回结果给前端, Status: {order.status} =====")
     return Response({"order_id": order.id, "status": order.status}, status=201)
 
 
