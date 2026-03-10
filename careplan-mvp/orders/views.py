@@ -4,7 +4,7 @@ from django.shortcuts import render
 from django.http import HttpResponse
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
-from .models import Patient, Provider, Order
+from .models import Patient, Provider, Order, CarePlan
 
 
 def index(request):
@@ -22,8 +22,6 @@ def create_order(request):
         defaults={
             "first_name": data["patient_first_name"],
             "last_name": data["patient_last_name"],
-            "diagnosis": data.get("diagnosis", ""),
-            "medical_history": data.get("medical_history", ""),
         },
     )
     print("===== STEP 2: 患者信息 =====")
@@ -43,13 +41,17 @@ def create_order(request):
         patient=patient,
         provider=provider,
         medication=data["medication"],
-        status="pending",
+        diagnosis=data.get("diagnosis", ""),
+        medical_history=data.get("medical_history", ""),
     )
     print("===== STEP 4: 订单已创建 =====")
-    print(f"Order ID: {order.id}, Status: {order.status}")
+    print(f"Order ID: {order.id}")
 
-    order.status = "processing"
-    order.save()
+    # Create a CarePlan record for this order
+    care_plan = CarePlan.objects.create(
+        order=order,
+        status="processing",
+    )
     print("===== STEP 5: 开始调用 Claude API =====")
 
     try:
@@ -59,8 +61,8 @@ def create_order(request):
             "You are a clinical pharmacist. Generate a care plan for this patient.\n\n"
             f"Patient: {patient.first_name} {patient.last_name}\n"
             f"MRN: {patient.mrn}\n"
-            f"Diagnosis: {patient.diagnosis}\n"
-            f"Medical History: {patient.medical_history}\n"
+            f"Diagnosis: {order.diagnosis}\n"
+            f"Medical History: {order.medical_history}\n"
             f"Medication: {order.medication}\n"
             f"Provider: Dr. {provider.first_name} {provider.last_name} (NPI: {provider.npi})\n\n"
             "Please generate a care plan that includes:\n"
@@ -76,19 +78,19 @@ def create_order(request):
             messages=[{"role": "user", "content": prompt}],
         )
 
-        order.care_plan = message.content[0].text
-        order.status = "completed"
-        order.save()
+        care_plan.content = message.content[0].text
+        care_plan.status = "completed"
+        care_plan.save()
         print("===== STEP 6: Care Plan 生成成功! =====")
 
     except Exception as e:
-        order.status = "failed"
-        order.care_plan = str(e)
-        order.save()
+        care_plan.status = "failed"
+        care_plan.content = str(e)
+        care_plan.save()
         print(f"===== STEP 6: 失败了! 错误: {e} =====")
 
-    print(f"===== STEP 7: 返回结果给前端, Status: {order.status} =====")
-    return Response({"order_id": order.id, "status": order.status}, status=201)
+    print(f"===== STEP 7: 返回结果给前端, Status: {care_plan.status} =====")
+    return Response({"order_id": order.id, "status": care_plan.status}, status=201)
 
 
 @api_view(["GET"])
@@ -100,15 +102,20 @@ def get_order(request, pk):
 
     result = {
         "order_id": order.id,
-        "status": order.status,
         "patient": f"{order.patient.first_name} {order.patient.last_name}",
         "provider": f"Dr. {order.provider.first_name} {order.provider.last_name}",
         "medication": order.medication,
         "created_at": order.created_at,
     }
 
-    if order.status == "completed":
-        result["care_plan"] = order.care_plan
+    # Get the care plan for this order
+    try:
+        care_plan = order.careplan
+        result["status"] = care_plan.status
+        if care_plan.status == "completed":
+            result["care_plan"] = care_plan.content
+    except CarePlan.DoesNotExist:
+        result["status"] = "no care plan"
 
     return Response(result)
 
@@ -126,9 +133,15 @@ def search_orders(request):
 
     results = []
     for order in orders:
+        # Get care plan status
+        try:
+            status = order.careplan.status
+        except CarePlan.DoesNotExist:
+            status = "no care plan"
+
         results.append({
             "order_id": order.id,
-            "status": order.status,
+            "status": status,
             "patient": f"{order.patient.first_name} {order.patient.last_name}",
             "mrn": order.patient.mrn,
             "medication": order.medication,
@@ -145,7 +158,12 @@ def download_care_plan(request, pk):
     except Order.DoesNotExist:
         return HttpResponse("Order not found", status=404)
 
-    if order.status != "completed":
+    try:
+        care_plan = order.careplan
+    except CarePlan.DoesNotExist:
+        return HttpResponse("Care plan not found", status=404)
+
+    if care_plan.status != "completed":
         return HttpResponse("Care plan not ready", status=400)
 
     content = (
@@ -157,7 +175,7 @@ def download_care_plan(request, pk):
         f"Medication: {order.medication}\n"
         f"Date: {order.created_at.strftime('%Y-%m-%d %H:%M')}\n"
         "========================================\n\n"
-        f"{order.care_plan}\n"
+        f"{care_plan.content}\n"
     )
 
     response = HttpResponse(content, content_type="text/plain")

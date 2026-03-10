@@ -5,8 +5,7 @@ class Patient(models.Model):
     first_name = models.CharField(max_length=100)
     last_name = models.CharField(max_length=100)
     mrn = models.CharField(max_length=50)  # Medical Record Number
-    diagnosis = models.TextField(blank=True, default="")
-    medical_history = models.TextField(blank=True, default="")
+    dob = models.DateField(null=True, blank=True)  # Date of Birth
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -24,6 +23,19 @@ class Provider(models.Model):
 
 
 class Order(models.Model):
+    patient = models.ForeignKey(Patient, on_delete=models.CASCADE)
+    provider = models.ForeignKey(Provider, on_delete=models.CASCADE)
+    medication = models.CharField(max_length=200)
+    diagnosis = models.TextField(blank=True, default="")
+    medical_history = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Order #{self.id} - {self.patient}"
+
+
+class CarePlan(models.Model):
     STATUS_CHOICES = [
         ("pending", "Pending"),
         ("processing", "Processing"),
@@ -31,13 +43,11 @@ class Order(models.Model):
         ("failed", "Failed"),
     ]
 
-    patient = models.ForeignKey(Patient, on_delete=models.CASCADE)
-    provider = models.ForeignKey(Provider, on_delete=models.CASCADE)
-    medication = models.CharField(max_length=200)
+    order = models.OneToOneField(Order, on_delete=models.CASCADE)
+    content = models.TextField(blank=True, default="")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
-    care_plan = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"Order #{self.id} - {self.patient} - {self.status}"
+        return f"CarePlan for Order #{self.order.id} - {self.status}"
