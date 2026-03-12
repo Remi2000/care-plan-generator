@@ -58,4 +58,7 @@ REST_FRAMEWORK = {
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 
+# Redis配置 - 队列用
+REDIS_URL = os.environ.get("REDIS_URL", "redis://redis:6379/0")
+
 STATIC_URL = "static/"

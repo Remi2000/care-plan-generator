@@ -12,6 +12,11 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
 
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+
   web:
     build: .
     command: >
@@ -23,6 +28,7 @@ services:
       - "8000:8000"
     depends_on:
       - db
+      - redis
     environment:
       DATABASE_URL: postgres://careplan_user:careplan_pass@db:5432/careplan
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}

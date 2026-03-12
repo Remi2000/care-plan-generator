@@ -1,3 +1,5 @@
+import redis
+import json
 import anthropic
 from django.conf import settings
 from django.shortcuts import render
@@ -47,50 +49,22 @@ def create_order(request):
     print("===== STEP 4: 订单已创建 =====")
     print(f"Order ID: {order.id}")
 
-    # Create a CarePlan record for this order
+    # 第一步：先存数据库，status=pending
     care_plan = CarePlan.objects.create(
         order=order,
-        status="processing",
+        status="pending",
     )
-    print("===== STEP 5: 开始调用 Claude API =====")
+    print("===== STEP 5: CarePlan 已存数据库, status=pending =====")
 
-    try:
-        client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+    # 第二步：把careplan_id放进Redis队列
+    # 注意：只放ID，不放全部数据（队列是传信号的，不是存数据的）
+    r = redis.from_url(settings.REDIS_URL)
+    r.rpush("careplan_queue", json.dumps({"careplan_id": care_plan.id}))
+    print(f"===== STEP 6: careplan_id={care_plan.id} 已放进Redis队列 =====")
 
-        prompt = (
-            "You are a clinical pharmacist. Generate a care plan for this patient.\n\n"
-            f"Patient: {patient.first_name} {patient.last_name}\n"
-            f"MRN: {patient.mrn}\n"
-            f"Diagnosis: {order.diagnosis}\n"
-            f"Medical History: {order.medical_history}\n"
-            f"Medication: {order.medication}\n"
-            f"Provider: Dr. {provider.first_name} {provider.last_name} (NPI: {provider.npi})\n\n"
-            "Please generate a care plan that includes:\n"
-            "1. Medication review\n"
-            "2. Monitoring parameters\n"
-            "3. Patient education points\n"
-            "4. Follow-up recommendations"
-        )
-
-        message = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=1024,
-            messages=[{"role": "user", "content": prompt}],
-        )
-
-        care_plan.content = message.content[0].text
-        care_plan.status = "completed"
-        care_plan.save()
-        print("===== STEP 6: Care Plan 生成成功! =====")
-
-    except Exception as e:
-        care_plan.status = "failed"
-        care_plan.content = str(e)
-        care_plan.save()
-        print(f"===== STEP 6: 失败了! 错误: {e} =====")
-
-    print(f"===== STEP 7: 返回结果给前端, Status: {care_plan.status} =====")
-    return Response({"order_id": order.id, "status": care_plan.status}, status=201)
+    # 第三步：立刻返回，不等Claude
+    print("===== STEP 7: 立刻返回给前端 =====")
+    return Response({"order_id": order.id, "careplan_id": care_plan.id, "status": "pending"}, status=201)
 
 
 @api_view(["GET"])
