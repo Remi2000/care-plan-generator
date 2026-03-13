@@ -155,3 +155,17 @@ def download_care_plan(request, pk):
     response = HttpResponse(content, content_type="text/plain")
     response["Content-Disposition"] = f"attachment; filename=care_plan_order_{order.id}.txt"
     return response
+
+
+@api_view(["GET"])
+def get_careplan_status(request, careplan_id):
+    try:
+        careplan = CarePlan.objects.get(id=careplan_id)
+    except CarePlan.DoesNotExist:
+        return Response({"error": "CarePlan not found"}, status=404)
+
+    if careplan.status == "completed":
+        return Response({"status": "completed", "content": careplan.content})
+    if careplan.status == "failed":
+        return Response({"status": "failed"})
+    return Response({"status": "pending"})

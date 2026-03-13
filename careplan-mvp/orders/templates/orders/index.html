@@ -93,6 +93,33 @@
     <script>
         let currentOrderId = null;
 
+        function startPolling(careplan_id) {
+            const interval = setInterval(async () => {
+                const response = await fetch(`/api/careplan/${careplan_id}/status/`);
+                const data = await response.json();
+
+                const badge = document.getElementById('statusBadge');
+                badge.textContent = data.status;
+                badge.className = `status status-${data.status}`;
+
+                if (data.status === 'completed') {
+                    clearInterval(interval);
+                    document.getElementById('carePlanContent').style.display = 'block';
+                    document.getElementById('carePlanContent').textContent = data.content;
+                    document.getElementById('downloadBtn').style.display = 'block';
+                    document.getElementById('submitBtn').disabled = false;
+                    document.getElementById('submitBtn').textContent = 'Generate Care Plan';
+                }
+
+                if (data.status === 'failed') {
+                    clearInterval(interval);
+                    document.getElementById('submitBtn').disabled = false;
+                    document.getElementById('submitBtn').textContent = 'Generate Care Plan';
+                }
+
+            }, 3000);
+        }
+
         async function submitOrder() {
             const btn = document.getElementById('submitBtn');
             btn.disabled = true;
@@ -121,21 +148,17 @@
             document.getElementById('resultSection').style.display = 'block';
             document.getElementById('orderId').textContent = result.order_id;
 
-            const orderResponse = await fetch(`/api/orders/${result.order_id}/`);
-            const order = await orderResponse.json();
-
+            // 显示 pending 状态
             const badge = document.getElementById('statusBadge');
-            badge.textContent = order.status;
-            badge.className = `status status-${order.status}`;
+            badge.textContent = 'pending';
+            badge.className = 'status status-pending';
 
-            if (order.status === 'completed' && order.care_plan) {
-                document.getElementById('carePlanContent').style.display = 'block';
-                document.getElementById('carePlanContent').textContent = order.care_plan;
-                document.getElementById('downloadBtn').style.display = 'block';
-            }
-
+            // 按钮立刻恢复，不等completed
             btn.disabled = false;
             btn.textContent = 'Generate Care Plan';
+
+            // 启动轮询
+            startPolling(result.careplan_id);
         }
 
         function downloadCarePlan() {
