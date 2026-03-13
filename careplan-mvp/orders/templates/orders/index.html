@@ -4,6 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Care Plan Generator - MVP</title>
+
+    <!-- React CDN -->
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <!-- Babel：让浏览器能读懂 JSX 语法 -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: -apple-system, sans-serif; background: #f5f5f5; padding: 40px; }
@@ -27,6 +34,7 @@
         .status { padding: 8px 16px; border-radius: 20px; display: inline-block; font-weight: 600; font-size: 14px; }
         .status-completed { background: #d4edda; color: #155724; }
         .status-failed { background: #f8d7da; color: #721c24; }
+        .status-pending { background: #fff3cd; color: #856404; }
         .care-plan { margin-top: 16px; padding: 20px; background: #f8f9fa; border-radius: 8px; white-space: pre-wrap; line-height: 1.6; font-size: 14px; }
         .section-title { font-size: 18px; font-weight: 600; margin-bottom: 16px; color: #1a1a1a; }
         .search-result-item { padding: 16px; border-bottom: 1px solid #eee; cursor: pointer; }
@@ -36,178 +44,196 @@
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>💊 Care Plan Generator</h1>
-        <p class="subtitle">MVP - Enter patient info, get a care plan</p>
+    <div id="root"></div>
 
-        <!-- Search -->
-        <div class="card">
-            <div class="section-title">🔍 Search Orders</div>
-            <label>Search by patient name or MRN</label>
-            <input type="text" id="searchInput" placeholder="e.g. John or MRN-001">
-            <button class="btn-gray" onclick="searchOrders()">Search</button>
-            <div id="searchResults"></div>
-        </div>
+    {% verbatim %}
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
 
-        <!-- Input Form -->
-        <div class="card">
-            <div class="section-title">New Order</div>
+        function App() {
+            // ---- 状态 ----
+            const [orderId, setOrderId] = useState(null);
+            const [careplanId, setCareplanId] = useState(null);
+            const [status, setStatus] = useState(null);
+            const [content, setContent] = useState(null);
+            const [isSubmitting, setIsSubmitting] = useState(false);
+            const [searchQuery, setSearchQuery] = useState('');
+            const [searchResults, setSearchResults] = useState([]);
 
-            <div class="section-title" style="font-size:15px; margin-top:8px;">Patient Information</div>
-            <label>First Name</label>
-            <input type="text" id="patient_first_name" value="John">
-            <label>Last Name</label>
-            <input type="text" id="patient_last_name" value="Smith">
-            <label>MRN</label>
-            <input type="text" id="mrn" value="MRN-001">
-            <label>Diagnosis</label>
-            <input type="text" id="diagnosis" value="Type 2 Diabetes">
-            <label>Medical History</label>
-            <textarea id="medical_history">Hypertension, High cholesterol. On metformin 500mg twice daily for 2 years.</textarea>
-
-            <div class="section-title" style="font-size:15px; margin-top:24px;">Provider Information</div>
-            <label>Provider First Name</label>
-            <input type="text" id="provider_first_name" value="Sarah">
-            <label>Provider Last Name</label>
-            <input type="text" id="provider_last_name" value="Johnson">
-            <label>NPI</label>
-            <input type="text" id="npi" value="NPI-12345">
-
-            <div class="section-title" style="font-size:15px; margin-top:24px;">Medication</div>
-            <label>Medication</label>
-            <input type="text" id="medication" value="Ozempic 0.5mg weekly">
-
-            <button id="submitBtn" onclick="submitOrder()">Generate Care Plan</button>
-        </div>
-
-        <!-- Result -->
-        <div id="resultSection" class="card result" style="display: none;">
-            <div class="section-title">Result</div>
-            <p>Order ID: <strong id="orderId"></strong></p>
-            <p style="margin-top: 8px;">Status: <span id="statusBadge" class="status"></span></p>
-            <button id="downloadBtn" class="btn-green" style="display: none;" onclick="downloadCarePlan()">⬇ Download Care Plan</button>
-            <div id="carePlanContent" class="care-plan" style="display: none;"></div>
-        </div>
-    </div>
-
-    <script>
-        let currentOrderId = null;
-
-        function startPolling(careplan_id) {
-            const interval = setInterval(async () => {
-                const response = await fetch(`/api/careplan/${careplan_id}/status/`);
-                const data = await response.json();
-
-                const badge = document.getElementById('statusBadge');
-                badge.textContent = data.status;
-                badge.className = `status status-${data.status}`;
-
-                if (data.status === 'completed') {
-                    clearInterval(interval);
-                    document.getElementById('carePlanContent').style.display = 'block';
-                    document.getElementById('carePlanContent').textContent = data.content;
-                    document.getElementById('downloadBtn').style.display = 'block';
-                    document.getElementById('submitBtn').disabled = false;
-                    document.getElementById('submitBtn').textContent = 'Generate Care Plan';
-                }
-
-                if (data.status === 'failed') {
-                    clearInterval(interval);
-                    document.getElementById('submitBtn').disabled = false;
-                    document.getElementById('submitBtn').textContent = 'Generate Care Plan';
-                }
-
-            }, 3000);
-        }
-
-        async function submitOrder() {
-            const btn = document.getElementById('submitBtn');
-            btn.disabled = true;
-            btn.textContent = '⏳ Generating... (10-20 seconds)';
-
-            const data = {
-                patient_first_name: document.getElementById('patient_first_name').value,
-                patient_last_name: document.getElementById('patient_last_name').value,
-                mrn: document.getElementById('mrn').value,
-                diagnosis: document.getElementById('diagnosis').value,
-                medical_history: document.getElementById('medical_history').value,
-                provider_first_name: document.getElementById('provider_first_name').value,
-                provider_last_name: document.getElementById('provider_last_name').value,
-                npi: document.getElementById('npi').value,
-                medication: document.getElementById('medication').value,
-            };
-
-            const response = await fetch('/api/orders/', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(data),
+            // 表单输入状态
+            const [form, setForm] = useState({
+                patient_first_name: 'John',
+                patient_last_name: 'Smith',
+                mrn: 'MRN-001',
+                diagnosis: 'Type 2 Diabetes',
+                medical_history: 'Hypertension, High cholesterol. On metformin 500mg twice daily for 2 years.',
+                provider_first_name: 'Sarah',
+                provider_last_name: 'Johnson',
+                npi: 'NPI-12345',
+                medication: 'Ozempic 0.5mg weekly',
             });
-            const result = await response.json();
 
-            currentOrderId = result.order_id;
-            document.getElementById('resultSection').style.display = 'block';
-            document.getElementById('orderId').textContent = result.order_id;
+            // ---- 轮询：careplanId 变化时启动 ----
+            useEffect(() => {
+                if (!careplanId) return;  // 还没有 id，不启动
 
-            // 显示 pending 状态
-            const badge = document.getElementById('statusBadge');
-            badge.textContent = 'pending';
-            badge.className = 'status status-pending';
+                const interval = setInterval(async () => {
+                    const response = await fetch(`/api/careplan/${careplanId}/status/`);
+                    const data = await response.json();
 
-            // 按钮立刻恢复，不等completed
-            btn.disabled = false;
-            btn.textContent = 'Generate Care Plan';
+                    setStatus(data.status);  // 更新状态，UI 自动刷新
 
-            // 启动轮询
-            startPolling(result.careplan_id);
-        }
+                    if (data.status === 'completed') {
+                        clearInterval(interval);  // 停止轮询
+                        setContent(data.content);
+                    }
 
-        function downloadCarePlan() {
-            if (currentOrderId) {
-                window.location.href = `/api/orders/${currentOrderId}/download/`;
+                    if (data.status === 'failed') {
+                        clearInterval(interval);  // 停止轮询
+                    }
+                }, 3000);
+
+                // 清理函数：组件卸载时停止轮询
+                return () => clearInterval(interval);
+
+            }, [careplanId]);  // careplanId 变化时触发
+
+            // ---- 提交表单 ----
+            async function submitOrder() {
+                setIsSubmitting(true);
+
+                const response = await fetch('/api/orders/', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(form),
+                });
+                const result = await response.json();
+
+                setOrderId(result.order_id);
+                setStatus('pending');
+                setContent(null);
+                setCareplanId(result.careplan_id);  // 这里触发 useEffect，启动轮询
+                setIsSubmitting(false);
             }
-        }
 
-        async function searchOrders() {
-            const q = document.getElementById('searchInput').value;
-            const response = await fetch(`/api/orders/search/?q=${encodeURIComponent(q)}`);
-            const results = await response.json();
-
-            const container = document.getElementById('searchResults');
-
-            if (results.length === 0) {
-                container.innerHTML = '<p style="padding: 16px; color: #666;">No orders found.</p>';
-                return;
+            // ---- 搜索 ----
+            async function searchOrders() {
+                const response = await fetch(`/api/orders/search/?q=${encodeURIComponent(searchQuery)}`);
+                const results = await response.json();
+                setSearchResults(results);
             }
 
-            container.innerHTML = results.map(order => `
-                <div class="search-result-item" onclick="viewOrder(${order.order_id})">
-                    <strong>Order #${order.order_id}</strong> - ${order.patient}
-                    <div class="search-meta">MRN: ${order.mrn} | ${order.medication} | ${order.status}</div>
+            // ---- 查看某个 Order ----
+            async function viewOrder(id) {
+                const response = await fetch(`/api/orders/${id}/`);
+                const order = await response.json();
+
+                setOrderId(order.order_id);
+                setStatus(order.status);
+                setContent(order.status === 'completed' ? order.care_plan : null);
+                setCareplanId(null);  // 不启动轮询，已经是最终状态
+            }
+
+            // ---- 渲染 ----
+            return (
+                <div className="container">
+                    <h1>💊 Care Plan Generator</h1>
+                    <p className="subtitle">MVP - Enter patient info, get a care plan</p>
+
+                    {/* 搜索 */}
+                    <div className="card">
+                        <div className="section-title">🔍 Search Orders</div>
+                        <label>Search by patient name or MRN</label>
+                        <input
+                            type="text"
+                            placeholder="e.g. John or MRN-001"
+                            value={searchQuery}
+                            onChange={e => setSearchQuery(e.target.value)}
+                        />
+                        <button className="btn-gray" onClick={searchOrders}>Search</button>
+                        <div>
+                            {searchResults.length === 0 ? null : searchResults.map(order => (
+                                <div key={order.order_id} className="search-result-item" onClick={() => viewOrder(order.order_id)}>
+                                    <strong>Order #{order.order_id}</strong> - {order.patient}
+                                    <div className="search-meta">MRN: {order.mrn} | {order.medication} | {order.status}</div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* 表单 */}
+                    <div className="card">
+                        <div className="section-title">New Order</div>
+
+                        <div className="section-title" style={{fontSize:'15px', marginTop:'8px'}}>Patient Information</div>
+                        {['patient_first_name', 'patient_last_name', 'mrn', 'diagnosis'].map(field => (
+                            <div key={field}>
+                                <label>{field.replace(/_/g, ' ')}</label>
+                                <input
+                                    type="text"
+                                    value={form[field]}
+                                    onChange={e => setForm({...form, [field]: e.target.value})}
+                                />
+                            </div>
+                        ))}
+                        <label>Medical History</label>
+                        <textarea
+                            value={form.medical_history}
+                            onChange={e => setForm({...form, medical_history: e.target.value})}
+                        />
+
+                        <div className="section-title" style={{fontSize:'15px', marginTop:'24px'}}>Provider Information</div>
+                        {['provider_first_name', 'provider_last_name', 'npi'].map(field => (
+                            <div key={field}>
+                                <label>{field.replace(/_/g, ' ')}</label>
+                                <input
+                                    type="text"
+                                    value={form[field]}
+                                    onChange={e => setForm({...form, [field]: e.target.value})}
+                                />
+                            </div>
+                        ))}
+
+                        <div className="section-title" style={{fontSize:'15px', marginTop:'24px'}}>Medication</div>
+                        <label>Medication</label>
+                        <input
+                            type="text"
+                            value={form.medication}
+                            onChange={e => setForm({...form, medication: e.target.value})}
+                        />
+
+                        <button disabled={isSubmitting} onClick={submitOrder}>
+                            {isSubmitting ? '⏳ Submitting...' : 'Generate Care Plan'}
+                        </button>
+                    </div>
+
+                    {/* 结果 */}
+                    {orderId && (
+                        <div className="card result">
+                            <div className="section-title">Result</div>
+                            <p>Order ID: <strong>{orderId}</strong></p>
+                            <p style={{marginTop: '8px'}}>
+                                Status: <span className={`status status-${status}`}>{status}</span>
+                            </p>
+                            {content && (
+                                <>
+                                    <button
+                                        className="btn-green"
+                                        onClick={() => window.location.href = `/api/orders/${orderId}/download/`}
+                                    >
+                                        ⬇ Download Care Plan
+                                    </button>
+                                    <div className="care-plan">{content}</div>
+                                </>
+                            )}
+                        </div>
+                    )}
                 </div>
-            `).join('');
+            );
         }
 
-        async function viewOrder(orderId) {
-            currentOrderId = orderId;
-            const response = await fetch(`/api/orders/${orderId}/`);
-            const order = await response.json();
-
-            document.getElementById('resultSection').style.display = 'block';
-            document.getElementById('orderId').textContent = order.order_id;
-
-            const badge = document.getElementById('statusBadge');
-            badge.textContent = order.status;
-            badge.className = `status status-${order.status}`;
-
-            if (order.status === 'completed' && order.care_plan) {
-                document.getElementById('carePlanContent').style.display = 'block';
-                document.getElementById('carePlanContent').textContent = order.care_plan;
-                document.getElementById('downloadBtn').style.display = 'block';
-            } else {
-                document.getElementById('carePlanContent').style.display = 'none';
-                document.getElementById('downloadBtn').style.display = 'none';
-            }
-        }
+        // React 把 App 渲染到 #root
+        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
     </script>
-</body>
+    {% endverbatim %}
 </html>
