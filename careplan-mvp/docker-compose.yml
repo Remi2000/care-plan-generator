@@ -32,6 +32,7 @@ services:
     environment:
       DATABASE_URL: postgres://careplan_user:careplan_pass@db:5432/careplan
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      USE_MOCK_LLM: "True"
       
   celery:
     build: .
@@ -45,6 +46,7 @@ services:
       DATABASE_URL: postgres://careplan_user:careplan_pass@db:5432/careplan
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       REDIS_URL: redis://redis:6379/0
+      USE_MOCK_LLM: "True"
 
 volumes:
   pgdata:

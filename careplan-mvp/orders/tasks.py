@@ -1,7 +1,13 @@
+import os
 import anthropic
 from celery import shared_task
 from django.conf import settings
 from .models import CarePlan
+
+
+def mock_generate_care_plan(prompt):
+    """开发测试用的假 LLM，立刻返回，不调用任何 API"""
+    return "[MOCK] 这是测试用的 Care Plan，不是真实的 LLM 输出。\n\n1. Medication overview: Mock data\n2. Dosing instructions: Mock data\n3. Monitoring parameters: Mock data\n4. Patient education points: Mock data\n5. Follow-up recommendations: Mock data"
 
 
 @shared_task(
@@ -53,14 +59,22 @@ Please provide a structured care plan including:
 """
 
     try:
-        client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
-        message = client.messages.create(
-            model="claude-opus-4-5",
-            max_tokens=1024,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        content = message.content[0].text
-        print(f"[Celery] ✅ Claude 返回成功")
+        use_mock = os.environ.get('USE_MOCK_LLM') == 'True'
+
+        if use_mock:
+            print(f"[Celery] 使用 MOCK LLM（开发模式）")
+            content = mock_generate_care_plan(prompt)
+        else:
+            # 生产环境：调用真实 LLM
+            # 切换方式：把 docker-compose.yml 里的 USE_MOCK_LLM 改成 "False"
+            client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+            message = client.messages.create(
+                model="claude-opus-4-5",
+                max_tokens=1024,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            content = message.content[0].text
+        print(f"[Celery] ✅ Care Plan 返回成功")
 
         # Step 4: 存回数据库
         care_plan.content = content
