@@ -32,6 +32,19 @@ services:
     environment:
       DATABASE_URL: postgres://careplan_user:careplan_pass@db:5432/careplan
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      
+  celery:
+    build: .
+    command: celery -A careplan_project worker --loglevel=info
+    volumes:
+      - .:/app
+    depends_on:
+      - db
+      - redis
+    environment:
+      DATABASE_URL: postgres://careplan_user:careplan_pass@db:5432/careplan
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      REDIS_URL: redis://redis:6379/0
 
 volumes:
   pgdata:

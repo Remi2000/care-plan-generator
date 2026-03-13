@@ -56,11 +56,11 @@ def create_order(request):
     )
     print("===== STEP 5: CarePlan 已存数据库, status=pending =====")
 
-    # 第二步：把careplan_id放进Redis队列
-    # 注意：只放ID，不放全部数据（队列是传信号的，不是存数据的）
-    r = redis.from_url(settings.REDIS_URL)
-    r.rpush("careplan_queue", json.dumps({"careplan_id": care_plan.id}))
-    print(f"===== STEP 6: careplan_id={care_plan.id} 已放进Redis队列 =====")
+    # 第二步：把任务交给 Celery 异步处理
+    # .delay() 就是"丢给 Celery，不等结果，立刻返回"
+    from orders.tasks import generate_care_plan
+    generate_care_plan.delay(care_plan.id)
+    print(f"===== STEP 6: careplan_id={care_plan.id} 已交给 Celery =====")
 
     # 第三步：立刻返回，不等Claude
     print("===== STEP 7: 立刻返回给前端 =====")
