@@ -33,7 +33,7 @@ services:
       DATABASE_URL: postgres://careplan_user:careplan_pass@db:5432/careplan
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       USE_MOCK_LLM: "True"
-      
+
   celery:
     build: .
     command: celery -A careplan_project worker --loglevel=info
@@ -46,6 +46,19 @@ services:
       DATABASE_URL: postgres://careplan_user:careplan_pass@db:5432/careplan
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       REDIS_URL: redis://redis:6379/0
+      USE_MOCK_LLM: "True"
+
+  test:
+    build: .
+    command: pytest orders/tests/ -v --tb=short
+    volumes:
+      - .:/app
+    depends_on:
+      - db
+    environment:
+      DATABASE_URL: postgres://careplan_user:careplan_pass@db:5432/careplan
+      DJANGO_SETTINGS_MODULE: careplan_project.settings
+      ANTHROPIC_API_KEY: "test-key"
       USE_MOCK_LLM: "True"
 
 volumes:

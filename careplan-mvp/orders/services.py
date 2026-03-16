@@ -55,7 +55,14 @@ def create_order_service(data):
         db_first = existing_by_mrn.first_name.strip().lower()
         db_last  = existing_by_mrn.last_name.strip().lower()
         name_match = (incoming_first == db_first and incoming_last == db_last)
-        dob_match  = (existing_by_mrn.dob == data.get("dob")) if data.get("dob") else True
+        incoming_dob = data.get("dob")
+        if incoming_dob and existing_by_mrn.dob:
+            from datetime import date
+            if isinstance(incoming_dob, str):
+                incoming_dob = date.fromisoformat(incoming_dob)
+            dob_match = (existing_by_mrn.dob == incoming_dob)
+        else:
+            dob_match = True
 
         if not name_match or not dob_match:
             warnings.append(WarningException(
