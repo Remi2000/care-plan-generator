@@ -29,10 +29,15 @@ def create_order(request):
     print(f"validated_data: {serializer.validated_data}")
 
     # 把整理好的数据交给service
-    order, care_plan = create_order_service(serializer.validated_data)
+    order, care_plan, warnings = create_order_service(serializer.validated_data)
     print("===== [views.py] service执行完毕 =====")
 
-    return Response({"order_id": order.id, "careplan_id": care_plan.id, "status": "pending"}, status=201)
+    return Response({
+        "order_id":    order.id,
+        "careplan_id": care_plan.id,
+        "status":      "pending",
+        "warnings":    warnings,
+    }, status=201)
 
 
 @api_view(["GET"])

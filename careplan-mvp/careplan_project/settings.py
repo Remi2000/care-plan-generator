@@ -54,6 +54,7 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [],
     "UNAUTHENTICATED_USER": None,
+    "EXCEPTION_HANDLER": "orders.exception_handler.app_exception_handler",
 }
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
