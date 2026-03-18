@@ -182,7 +182,50 @@ class PharmaAdapter(BaseIntakeAdapter):
             diagnosis=", ".join(all_dx),
             medical_history="\n".join(med_history_items),
         )
+    
+# ============================================================
+# MetroAdapter: 处理 Metro General Hospital 的 JSON 数据
+# ============================================================
 
+class MetroAdapter(BaseIntakeAdapter):
+
+    def parse(self, raw_data):
+        """原始数据就是 dict，直接存起来"""
+        self.raw = raw_data
+        return self
+
+    def transform(self) -> InternalOrder:
+        """把 Metro Hospital 格式翻译成 InternalOrder"""
+        patient = self.raw["patient"]
+        doc = self.raw["referring_doc"]
+        clinical = self.raw["clinical"]
+
+        # 医生名字是 "Sarah Thompson, MD"，去掉 ", MD" 再 split
+        name_parts = doc["full_name"].replace(", MD", "").split()
+
+        # diagnosis: primary + additional 合并成字符串
+        all_dx = [clinical["icd10_primary"]] + clinical["icd10_additional"]
+
+        # dob 格式是 "1990-06-15"
+        dob = datetime.strptime(patient["birth_date"], "%Y-%m-%d").date()
+
+        # 用药历史: 每个是 dict，拼成 "Name Dose Frequency"
+        med_history_items = []
+        for med in self.raw["current_medications"]:
+            med_history_items.append(f"{med['name']} {med['dose']} {med['frequency']}")
+
+        return InternalOrder(
+            mrn=patient["medical_id"],
+            patient_first_name=patient["name_first"],
+            patient_last_name=patient["name_last"],
+            dob=dob,
+            npi=doc["national_provider_id"],
+            provider_first_name=name_parts[0],
+            provider_last_name=name_parts[-1],
+            medication=self.raw["prescription"]["drug"],
+            diagnosis=", ".join(all_dx),
+            medical_history="\n".join(med_history_items),
+        )
 
 # ============================================================
 # 工厂函数: 根据数据来源返回对应的 adapter
@@ -193,6 +236,7 @@ def get_adapter(source: str) -> BaseIntakeAdapter:
     adapters = {
         "clinic": ClinicAdapter,
         "pharma": PharmaAdapter,
+        "metro": MetroAdapter,
     }
 
     adapter_class = adapters.get(source)
