@@ -11,6 +11,7 @@ from .services import (
     get_care_plan_content,
     get_careplan_status_service,
 )
+from .adapters import get_adapter
 
 
 def index(request):
@@ -19,6 +20,7 @@ def index(request):
 
 @api_view(["POST"])
 def create_order(request):
+    """原有的 endpoint — CVS 内部 web form 用这个"""
     print("===== [views.py] 收到请求 =====")
     print(f"request.data: {request.data}")
 
@@ -38,6 +40,43 @@ def create_order(request):
         "status":      "pending",
         "warnings":    warnings,
     }, status=201)
+
+
+@api_view(["POST"])
+def intake_order(request):
+    """
+    新的 endpoint — 外部数据源用这个
+    请求体需要包含:
+      - source: "clinic" 或 "pharma"
+      - data: 原始数据（JSON dict 或 XML 字符串）
+    """
+    source = request.data.get("source")
+    raw_data = request.data.get("data")
+
+    if not source or not raw_data:
+        return Response(
+            {"error": "Both 'source' and 'data' are required"},
+            status=400,
+        )
+
+    try:
+        # 工厂函数选对 adapter → parse → transform → validate → 返回 dict
+        adapter = get_adapter(source)
+        validated_data = adapter.process(raw_data)
+
+        # 交给同一个 create_order_service 处理（重复检测 + 创建 order）
+        order, care_plan, warnings = create_order_service(validated_data)
+
+        return Response({
+            "order_id":    order.id,
+            "careplan_id": care_plan.id,
+            "status":      "pending",
+            "warnings":    warnings,
+            "source":      source,
+        }, status=201)
+
+    except ValueError as e:
+        return Response({"error": str(e)}, status=400)
 
 
 @api_view(["GET"])
