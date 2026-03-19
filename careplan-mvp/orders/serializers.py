@@ -35,6 +35,6 @@ class CreateOrderSerializer(serializers.Serializer):
         return value
 
     def validate_mrn(self, value):
-        if len(value.strip()) == 0:
-            raise serializers.ValidationError("MRN cannot be empty.")
+        if not value.isdigit() or len(value) != 6:
+            raise serializers.ValidationError("MRN must be exactly 6 digits.")
         return value
