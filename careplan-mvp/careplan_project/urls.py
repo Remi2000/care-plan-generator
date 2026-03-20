@@ -4,4 +4,5 @@ from orders.views import index
 urlpatterns = [
     path("", index, name="index"),
     path("api/", include("orders.urls")),
+    path('', include('django_prometheus.urls')),
 ]

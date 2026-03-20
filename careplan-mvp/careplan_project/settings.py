@@ -14,11 +14,14 @@ INSTALLED_APPS = [
     "rest_framework",
     "corsheaders",
     "orders",
+    'django_prometheus',
 ]
 
 MIDDLEWARE = [
+    "django_prometheus.middleware.PrometheusBeforeMiddleware",  # 第一个
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.common.CommonMiddleware",
+    "django_prometheus.middleware.PrometheusAfterMiddleware",   # 最后一个
 ]
 
 CORS_ALLOW_ALL_ORIGINS = True

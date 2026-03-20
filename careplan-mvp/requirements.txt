@@ -8,3 +8,4 @@ celery==5.3.6
 pytest==8.3.4
 pytest-django==4.9.0
 pytest-cov
+django-prometheus
